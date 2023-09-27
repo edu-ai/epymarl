@@ -1,6 +1,7 @@
 absl-py
 attrs
 setuptools==65.5.0
+wheel==0.38.4
 gym==0.21.0
 idna==2.7
 imageio
