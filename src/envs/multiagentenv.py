@@ -51,10 +51,21 @@ class MultiAgentEnv(object):
     def save_replay(self):
         raise NotImplementedError
 
-    def get_env_info(self):
+    def get_env_info(self, allow_communications=True):
+        print("get env info")
         env_info = {"state_shape": self.get_state_size(),
                     "obs_shape": self.get_obs_size(),
                     "n_actions": self.get_total_actions(),
                     "n_agents": self.n_agents,
                     "episode_limit": self.episode_limit}
-        return env_info
+
+        # Communication env info -> we consider the action of every other agent too
+        comm_env_info = env_info.copy()
+        comm_env_info['state_shape'] += self.get_total_actions() * self.n_agents
+        comm_env_info['allow_communications'] = allow_communications
+
+        if allow_communications:
+            print("ALLOWING COMMS")
+            print(env_info)
+            print(comm_env_info)
+        return env_info if not allow_communications else comm_env_info
