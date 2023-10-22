@@ -8,6 +8,8 @@ class BasicMAC:
     def __init__(self, scheme, groups, args):
         self.n_agents = args.n_agents
         self.args = args
+        self.with_comms = True
+        print("Communicating:", self.with_comms)
         input_shape = self._get_input_shape(scheme)
         self._build_agents(input_shape)
         self.agent_output_type = args.agent_output_type
@@ -70,11 +72,18 @@ class BasicMAC:
             if t == 0:
                 inputs.append(th.zeros_like(batch["actions_onehot"][:, t]))
             else:
-                inputs.append(batch["actions_onehot"][:, t-1])
+                inputs.append(batch["actions_onehot"][:, t - 1])
         if self.args.obs_agent_id:
-            inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
+            to_append = th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1)
+            inputs.append(to_append)
+        inputs = th.cat([x.reshape(bs * self.n_agents, -1) for x in inputs], dim=1)
 
-        inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
+        # inputs for agent i will be [obs_i, obs_(i+1), ..., obs_(i+n)] in modular arithmetic
+        if self.with_comms:
+            inputs = inputs.reshape(bs, self.n_agents, -1)
+            perms = [[(j + k) % self.n_agents for k in range(self.n_agents)] for j in range(self.n_agents)]
+            inputs = inputs[:, perms].reshape(bs * self.n_agents, -1)
+
         return inputs
 
     def _get_input_shape(self, scheme):
@@ -83,5 +92,8 @@ class BasicMAC:
             input_shape += scheme["actions_onehot"]["vshape"][0]
         if self.args.obs_agent_id:
             input_shape += self.n_agents
+
+        if self.with_comms:
+            input_shape *= self.n_agents
 
         return input_shape
