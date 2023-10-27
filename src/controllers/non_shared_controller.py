@@ -1,6 +1,6 @@
 from modules.agents import REGISTRY as agent_REGISTRY
 from components.action_selectors import REGISTRY as action_REGISTRY
-from controller import Controller
+from .controller import Controller
 import torch as th
 
 class NonSharedMAC(Controller):

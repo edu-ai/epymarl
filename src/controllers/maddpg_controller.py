@@ -3,7 +3,7 @@ from components.action_selectors import REGISTRY as action_REGISTRY
 import torch as th
 from torch.autograd import Variable
 import torch.nn.functional as F
-from controller import Controller
+from .controller import Controller
 
 
 
