@@ -6,9 +6,10 @@ class Controller:
     def __init__(self, scheme, groups, args):
         self.n_agents = args.n_agents
         self.args = args
-        self.with_comms = False
+        self.allow_communications = args.allow_communications
+        self.myopic_communications = args.myopic_communications
+        self.intention_sharing = args.intention_sharing
 
-        print("Communicating:", self.with_comms)
         input_shape = self._get_input_shape(scheme)
         self._build_agents(input_shape)
         self.agent_output_type = args.agent_output_type
@@ -45,8 +46,10 @@ class Controller:
         if self.args.obs_agent_id:
             input_shape += self.n_agents
 
-        if self.with_comms:
+        if self.allow_communications:
             input_shape *= self.n_agents
+            if self.myopic_communications:
+                input_shape += 1
 
         return input_shape
 
@@ -66,7 +69,7 @@ class Controller:
 
         inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
 
-        if self.with_comms:
+        if self.allow_communications:
             inputs = inputs.reshape(bs, self.n_agents, -1)
             perms = [[(j + k) % self.n_agents for k in range(self.n_agents)] for j in range(self.n_agents)]
             inputs = inputs[:, perms].reshape(bs * self.n_agents, -1)
