@@ -56,8 +56,34 @@ class AttentionMechanism(nn.Module):
         return messages
 
 class ImaginedTrajectory(nn.Module):
-    def __init__(self):
-        pass
+    def __init__(self, input_shape, message_shape, args, n_agents, trajectory_length=10):
+        super(ImaginedTrajectory, self).__init__()
+        self.args = args
+        self.input_shape = input_shape
+        self.message_shape = message_shape
+        self.n_agents = n_agents
+        self.trajectory_length = trajectory_length
+        # Define fa, fo and pi^i
+
+        self.fa_fc1 = nn.Linear(self.input_shape, self.args.hidden_dim)
+        self.fa_fc2 = nn.Linear(self.args.hidden_dim, self.args.n_actions*(self.n_agents-1))
+
+        self.fo_fc1 = nn.Linear(self.args.n_actions*self.n_agents + self.input_shape, self.hidden_dim)
+        self.fo_fc2 = nn.Linear(self.hidden_dim, self.input_shape)
+
+        self.pi_fc1 = nn.Linear(self.input_shape+self.message_shape, self.args.hidden_dim)
+        self.pi_fc2 = nn.Linear(self.args.hidden_dim, self.args.n_actions)
+
+    def forward(self, imagined_observation, imagined_action, received_message):
+        # How to separate out the taus
+        fa = F.relu(self.fa_fc1(imagined_observation))
+        fa = F.softmax(self.fa_fc2(fa))
+
+        fo = torch.stack([fa, [imagined_action], [imagined_observation]])
+        fo = F.relu(self.fo_fc1(fo))
+        fo = self.fo_fc1(fo)
+
+
 
 class RNNCommunicatingAgent(nn.Module):
     def __init__(self, input_shape, message_shape, args, n_agents):

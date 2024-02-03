@@ -10,8 +10,12 @@ class Controller:
         self.myopic_communications = args.myopic_communications
         self.intention_sharing = args.intention_sharing
 
-        input_shape = self._get_input_shape(scheme)
-        self._build_agents(input_shape)
+        if self.allow_communications:
+            input_shape, message_shape = self._get_input_shape(scheme)
+            self._build_agents(input_shape, message_shape)
+        else:
+            input_shape = self._get_input_shape(scheme)
+            self._build_agents(input_shape)
         self.agent_output_type = args.agent_output_type
 
         self.action_selector = action_REGISTRY[args.action_selector](args)
@@ -36,8 +40,12 @@ class Controller:
     def load_models(self, path):
         self.agent.load_state_dict(th.load("{}/agent.th".format(path), map_location=lambda storage, loc: storage))
 
-    def _build_agents(self, input_shape):
-        self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args)
+    def _build_agents(self, input_shape, message_shape=None):
+        if not self.allow_communications:
+            self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args)
+        else:
+            # self.agent = agent_REGISTRY[self.args.agent](input_shape, self.args)
+            self.agent = agent_REGISTRY[self.args.agent+'_comms'](input_shape, message_shape, self.args, self.n_agents)
 
     def _get_input_shape(self, scheme):
         input_shape = scheme["obs"]["vshape"]
@@ -47,16 +55,16 @@ class Controller:
             input_shape += self.n_agents
 
         if self.allow_communications:
-            input_shape *= self.n_agents
             if self.myopic_communications:
                 input_shape += 1
-
+            return input_shape, scheme['message']['vshape']
         return input_shape
 
     def _build_inputs(self, batch, t):
         # Assumes homogenous agents with flat observations.
         # Other MACs might want to e.g. delegate building inputs to each agent
         bs = batch.batch_size
+        print('message shape:', batch['message'][:, t].shape, '\t|\tbatch size:', bs, '\t|\tt:', t, '\t|\tn:', self.n_agents, '\t|\tn_actions:', self.args.n_actions)
         inputs = []
         inputs.append(batch["obs"][:, t])  # b1av
         if self.args.obs_last_action:
@@ -69,10 +77,15 @@ class Controller:
 
         inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
 
+
         if self.allow_communications:
+            messages = batch['message'][:, t]
+            messages = messages.reshape(bs, self.n_agents, -1)
             inputs = inputs.reshape(bs, self.n_agents, -1)
-            perms = [[(j + k) % self.n_agents for k in range(self.n_agents)] for j in range(self.n_agents)]
-            inputs = inputs[:, perms].reshape(bs * self.n_agents, -1)
+            print(messages.shape, inputs.shape)
+            inputs = th.cat([inputs, messages], dim=-1)
+            print(inputs.shape)
+            inputs = inputs.reshape(bs*self.n_agents, -1)
 
         return inputs
 
