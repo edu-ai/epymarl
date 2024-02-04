@@ -23,20 +23,25 @@ class AttentionMechanism(nn.Module):
         qs = self.qs(received_messages)
         ks, vs = [], []
         for i in range(self.trajectory_length):
-            tau = imagined_trajectory[:, i*self.tau_shape:(i+1)*self.tau_shape]
+            tau = imagined_trajectory[..., i*self.tau_shape:(i+1)*self.tau_shape]
             ks.append(self.ks(tau))
             vs.append(self.vs(tau))
         sqrt_dk = math.sqrt(self.args.hidden_dim)
         messages = []
-        for i in range(self.n_agents):
+        for i in range(received_messages.shape[0]):
             unscaled_alpha = []
             for j in range(self.trajectory_length):
-                unscaled_alpha.append(th.dot(qs, ks[j][i]) / sqrt_dk)
+                try:
+                    unscaled_alpha.append(th.dot(qs[i], ks[j][i]) / sqrt_dk)
+                except:
+                    print(f"received_messages shape: {received_messages.shape}\t|\ttau shape: {tau.shape}\t|\tks[j][i] shape: {ks[j].shape}\t|\tqs shape: {qs.shape}")
             unscaled_alpha = th.Tensor(unscaled_alpha)
             alpha = th.softmax(unscaled_alpha, -1)
             message = 0
             for j in range(self.trajectory_length):
-                message += alpha[j] * vs[j][i]
+                a = alpha[j]
+                v = vs[j][i]
+                message += a * v
             messages.append(message)
 
         # shape is (n_agents, message_size)
@@ -72,14 +77,18 @@ class ImaginedTrajectory(nn.Module):
             self.fa_rnn = nn.Linear(args.hidden_dim, args.hidden_dim)
     
     def forward(self, inputs, h_fa, h_fo, h_pi):
-        obs = inputs[:, :self.input_shape-self.args.n_actions]
-        pi = inputs[:, self.input_shape-self.args.n_actions:-self.message_shape]
-        message = inputs[:, -self.message_shape:]
+        obs = inputs[..., :self.input_shape-self.args.n_actions]
+        pi = inputs[..., self.input_shape-self.args.n_actions:-self.message_shape]
+        message = inputs[..., -self.message_shape:]
 
         observations = [obs]
         actions = [pi]
+        hs = [h_fa, h_fo, h_pi]
         for i in range(self.trajectory_length-1):
             _, obs, pi, h_fa, h_fo, h_pi = self.forward_helper(obs, pi, message, h_fa, h_fo, h_pi)
+            hs.append(h_fa)
+            hs.append(h_fo)
+            hs.append(h_pi)
             observations.append(obs)
             actions.append(pi)
         taus = []
@@ -127,9 +136,11 @@ class ImaginedTrajectory(nn.Module):
         n_actions = self.args.n_actions
         q = q.flatten().reshape(q_size//(n_actions*(self.n_agents-1)), n_actions*(self.n_agents-1))
 
+        qs_out = []
         for i in range(self.n_agents-1):
-            q[:, i*n_actions:(i+1)*n_actions] = th.softmax(q[:, i*n_actions:(i+1)*n_actions], -1)
-        q = q.reshape(q_original_shape)
+            q_out = th.softmax(q[:, i*n_actions:(i+1)*n_actions], -1)
+            qs_out.append(q_out)
+        q = th.stack(qs_out).reshape(q_original_shape)
 
         return q, h
 
@@ -169,14 +180,19 @@ class RNNCommunicatingAgent(nn.Module):
         return th.cat([h_fa, h_fo, h_pi], -1)
     
     def forward(self, inputs, hidden_state):
-        h_fa = hidden_state[:, :self.args.hidden_dim]
-        h_fo = hidden_state[:, self.args.hidden_dim:2*self.args.hidden_dim]
-        h_pi = hidden_state[:, -self.args.hidden_dim:]
+        h_fa = hidden_state[..., :self.args.hidden_dim]
+        h_fo = hidden_state[..., self.args.hidden_dim:2*self.args.hidden_dim]
+        h_pi = hidden_state[..., -self.args.hidden_dim:]
 
         message, taus, h_fa, h_fo, h_pi = self.itgm.forward(inputs, h_fa, h_fo, h_pi)
-        new_message = self.am.forward(taus.reshape((self.n_agents, -1)), message[0])
+        new_message = self.am.forward(taus.reshape((message.shape[0], -1)), message)
 
         hidden_state = th.cat([h_fa, h_fo, h_pi], -1)
-        q = th.cat([new_message, taus[1, :, -self.args.n_actions:]], -1)
+        try:
+            q = th.cat([new_message, taus[1, ..., -self.args.n_actions:]], -1)
+        except:
+            print("Error")
+            print(f"Inputs shape: {inputs.shape}\t|\tTaus shape: {taus.shape}\t|\tMessage shape: {message.shape}")
+            print(f"new_message_shape: {new_message.shape}\t|\ttau_shape: {taus[1, ..., -self.args.n_actions:].shape}")
         return q, hidden_state
 
