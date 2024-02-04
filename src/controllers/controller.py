@@ -77,8 +77,7 @@ class Controller:
 
 
         if self.allow_communications:
-            messages = batch['message'][:, t]
-            print("message info:", messages.abs().sum())
+            messages = batch['message'][:, t-1]
             messages = messages.reshape(bs, -1)
             messages = th.cat([messages]*self.n_agents, dim=0)
             messages = messages.reshape(bs, self.n_agents, -1)
