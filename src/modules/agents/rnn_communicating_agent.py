@@ -21,27 +21,18 @@ class AttentionMechanism(nn.Module):
     def forward(self, imagined_trajectory, received_messages):
         # need to duplicate messages for every agent to see
         qs = self.qs(received_messages)
-        ks, vs = [], []
-        for i in range(self.trajectory_length):
-            tau = imagined_trajectory[..., i*self.tau_shape:(i+1)*self.tau_shape]
-            ks.append(self.ks(tau))
-            vs.append(self.vs(tau))
+        taus = imagined_trajectory.reshape(-1, self.tau_shape)
+        k = self.ks(taus)
+        v = self.vs(taus)
         sqrt_dk = math.sqrt(self.args.hidden_dim)
         messages = []
         for i in range(received_messages.shape[0]):
             unscaled_alpha = []
             for j in range(self.trajectory_length):
-                try:
-                    unscaled_alpha.append(th.dot(qs[i], ks[j][i]) / sqrt_dk)
-                except:
-                    print(f"received_messages shape: {received_messages.shape}\t|\ttau shape: {tau.shape}\t|\tks[j][i] shape: {ks[j].shape}\t|\tqs shape: {qs.shape}")
+                unscaled_alpha.append(th.dot(qs[i], k[j*self.n_agents+i, :]) / sqrt_dk)
             unscaled_alpha = th.Tensor(unscaled_alpha)
             alpha = th.softmax(unscaled_alpha, -1)
-            message = 0
-            for j in range(self.trajectory_length):
-                a = alpha[j]
-                v = vs[j][i]
-                message += a * v
+            message = sum(alpha[j]*v[j*self.n_agents+i, :] for j in range(self.trajectory_length))
             messages.append(message)
 
         # shape is (n_agents, message_size)
@@ -109,8 +100,8 @@ class ImaginedTrajectory(nn.Module):
         return received_message, fo, pi, next_hidden_state_fa, next_hidden_state_fo, next_hidden_state_pi
     
     def forward_fo(self, fa, imagined_action, imagined_observation, hidden_state):
-        x = th.cat([fa, imagined_action, imagined_observation], -1)
-        x = F.relu(self.fo_fc1(x))
+        x_in = th.cat([fa, imagined_action, imagined_observation], -1)
+        x = F.relu(self.fo_fc1(x_in))
         h_in = hidden_state.reshape(-1, self.args.hidden_dim)
         if self.args.use_rnn:
             h = self.fo_rnn(x, h_in)
