@@ -115,7 +115,7 @@ class QLearner:
 
         # Optimise
         self.optimiser.zero_grad()
-        loss.backward()
+        loss.backward(retain_graph=True)
         grad_norm = th.nn.utils.clip_grad_norm_(self.params, self.args.grad_norm_clip)
         self.optimiser.step()
 
