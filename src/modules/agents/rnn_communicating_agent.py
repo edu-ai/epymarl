@@ -5,17 +5,17 @@ import math
 
 
 class AttentionMechanism(nn.Module):
-    def __init__(self, input_shape, message_shape, args, n_agents, trajectory_length=10):
+    def __init__(self, obs_shape, messages_shape, args, n_agents, trajectory_length=10):
         super(AttentionMechanism, self).__init__()
-        self.tau_shape = input_shape
-        self.message_shape = message_shape
+        self.tau_shape = obs_shape + args.n_actions
+        self.messages_shape = messages_shape
         self.args = args
         self.n_agents = n_agents
         self.trajectory_length = trajectory_length
 
-        self.qs = nn.Linear(message_shape, self.args.hidden_dim)
+        self.qs = nn.Linear(messages_shape, self.args.hidden_dim)
         self.ks = nn.Linear(self.tau_shape, self.args.hidden_dim)
-        self.vs = nn.Linear(self.tau_shape, self.message_shape // self.n_agents)
+        self.vs = nn.Linear(self.tau_shape, self.messages_shape // self.n_agents)
 
 
     def forward(self, imagined_trajectory, received_messages):
@@ -41,47 +41,40 @@ class AttentionMechanism(nn.Module):
         return messages
 
 class ImaginedTrajectory(nn.Module):
-    def __init__(self, input_shape, message_shape, args, n_agents, trajectory_length=10):
+    def __init__(self, obs_shape, messages_shape, args, n_agents, pi, trajectory_length=10):
         super(ImaginedTrajectory, self).__init__()
         self.args = args
-        self.input_shape = input_shape
-        self.message_shape = message_shape
+        self.obs_shape = obs_shape
+        self.messages_shape = messages_shape
         self.n_agents = n_agents
         self.trajectory_length = trajectory_length
+        self.pi = pi
         # Define fa, fo and pi^i
 
-        self.fa_fc1 = nn.Linear(self.input_shape - self.args.n_actions, self.args.hidden_dim)
+        self.fa_fc1 = nn.Linear(self.obs_shape, self.args.hidden_dim)
         self.fa_fc2 = nn.Linear(self.args.hidden_dim, self.args.n_actions*(self.n_agents-1))
 
-        self.fo_fc1 = nn.Linear(self.args.n_actions*(self.n_agents - 1) + self.input_shape, self.args.hidden_dim)
-        self.fo_fc2 = nn.Linear(self.args.hidden_dim, self.input_shape-self.args.n_actions)
+        self.fo_fc1 = nn.Linear(self.args.n_actions*self.n_agents + self.obs_shape, self.args.hidden_dim)
+        self.fo_fc2 = nn.Linear(self.args.hidden_dim, self.obs_shape)
 
-        self.pi_fc1 = nn.Linear(self.input_shape+self.message_shape-self.args.n_actions, self.args.hidden_dim)
-        self.pi_fc2 = nn.Linear(self.args.hidden_dim, self.args.n_actions)
         if self.args.use_rnn:
-            self.pi_rnn = nn.GRUCell(args.hidden_dim, args.hidden_dim)
             self.fo_rnn = nn.GRUCell(args.hidden_dim, args.hidden_dim)
             self.fa_rnn = nn.GRUCell(args.hidden_dim, args.hidden_dim)
         else:
-            self.pi_rnn = nn.Linear(args.hidden_dim, args.hidden_dim)
             self.fo_rnn = nn.Linear(args.hidden_dim, args.hidden_dim)
             self.fa_rnn = nn.Linear(args.hidden_dim, args.hidden_dim)
     
-    def forward(self, inputs, h_fa, h_fo, h_pi):
-        obs = inputs[..., :self.input_shape-self.args.n_actions]
-        pi = inputs[..., self.input_shape-self.args.n_actions:-self.message_shape]
-        message = inputs[..., -self.message_shape:]
-
+    def forward(self, message, obs, action, h_fa, h_fo, h_pi):
         observations = [obs]
-        actions = [pi]
+        actions = [action]
         hs = [h_fa, h_fo, h_pi]
         for i in range(self.trajectory_length-1):
-            _, obs, pi, h_fa, h_fo, h_pi = self.forward_helper(obs, pi, message, h_fa, h_fo, h_pi)
+            obs, action, h_fa, h_fo, h_pi = self.forward_helper(obs, action, message, h_fa, h_fo, h_pi)
             hs.append(h_fa)
             hs.append(h_fo)
             hs.append(h_pi)
             observations.append(obs)
-            actions.append(pi)
+            actions.append(action)
         taus = []
 
         for i in range(self.trajectory_length):
@@ -89,7 +82,7 @@ class ImaginedTrajectory(nn.Module):
             taus.append(tau)
         taus = th.stack(taus) # (trajectory_length, n_agents, vs)
 
-        return message, taus, h_fa, h_fo, h_pi
+        return taus, h_fa, h_fo, h_pi
 
     def forward_helper(self, imagined_observation, imagined_action, received_message, hidden_state_fa, hidden_state_fo, hidden_state_pi):
         # How to separate out the taus
@@ -97,7 +90,7 @@ class ImaginedTrajectory(nn.Module):
         fo, next_hidden_state_fo = self.forward_fo(fa, imagined_action, imagined_observation, hidden_state_fo)
         pi, next_hidden_state_pi = self.forward_pi(imagined_observation, received_message, hidden_state_pi)
 
-        return received_message, fo, pi, next_hidden_state_fa, next_hidden_state_fo, next_hidden_state_pi
+        return fo, pi, next_hidden_state_fa, next_hidden_state_fo, next_hidden_state_pi
     
     def forward_fo(self, fa, imagined_action, imagined_observation, hidden_state):
         x_in = th.cat([fa, imagined_action, imagined_observation], -1)
@@ -136,6 +129,28 @@ class ImaginedTrajectory(nn.Module):
         return q, h
 
     def forward_pi(self, obs, received_message, hidden_state):
+        q, h = self.pi(obs, received_message, hidden_state)
+        return q.detach(), h.detach()
+
+class Pi(nn.Module):
+    def __init__(self, obs_shape, messages_shape, args, n_agents, trajectory_length=10):
+        super(Pi, self).__init__()
+        self.args = args
+        self.obs_shape = obs_shape
+        self.messages_shape = messages_shape
+        self.n_agents = n_agents
+
+        self.pi_fc1 = nn.Linear(self.obs_shape+self.messages_shape, self.args.hidden_dim)
+        self.pi_fc2 = nn.Linear(self.args.hidden_dim, self.args.n_actions)
+        if self.args.use_rnn:
+            self.pi_rnn = nn.GRUCell(args.hidden_dim, args.hidden_dim)
+        else:
+            self.pi_rnn = nn.Linear(args.hidden_dim, args.hidden_dim)
+
+    def init_hidden(self):
+        return self.pi_fc1.weight.new(1, self.args.hidden_dim).zero_()
+    
+    def forward(self, obs, received_message, hidden_state):
         combined_inputs = th.cat([obs, received_message], -1)
         x = F.relu(self.pi_fc1(combined_inputs))
         h_in = hidden_state.reshape(-1, self.args.hidden_dim)
@@ -144,30 +159,27 @@ class ImaginedTrajectory(nn.Module):
         else:
             h = F.relu(self.pi_rnn(x))
         q = self.pi_fc2(h)
-
         return q, h
 
-
-
-
 class RNNCommunicatingAgent(nn.Module):
-    def __init__(self, input_shape, message_shape, args, n_agents, trajectory_length=10):
+    def __init__(self, input_shape, messages_shape, args, n_agents, trajectory_length=10):
         super(RNNCommunicatingAgent, self).__init__()
         self.args = args
         self.n_agents = n_agents
         self.trajectory_length = trajectory_length
 
-        self.input_shape = input_shape
-        self.message_shape = message_shape
+        self.obs_shape = input_shape // 2
+        self.messages_shape = messages_shape
 
-        self.itgm = ImaginedTrajectory(input_shape, message_shape, args, n_agents, trajectory_length)
-        self.am = AttentionMechanism(input_shape, message_shape, args, n_agents, trajectory_length)
+        self.pi = Pi(self.obs_shape, messages_shape, args, n_agents)
+        self.itgm = ImaginedTrajectory(self.obs_shape, messages_shape, args, n_agents, self.pi, trajectory_length)
+        self.am = AttentionMechanism(self.obs_shape, messages_shape, args, n_agents, trajectory_length)
 
     def init_hidden(self):
         # make hidden states on same device as model
         h_fa = self.itgm.fa_fc1.weight.new(1, self.args.hidden_dim).zero_()
         h_fo = self.itgm.fo_fc1.weight.new(1, self.args.hidden_dim).zero_()
-        h_pi = self.itgm.pi_fc1.weight.new(1, self.args.hidden_dim).zero_()
+        h_pi = self.pi.init_hidden()
         return th.cat([h_fa, h_fo, h_pi], -1)
     
     def forward(self, inputs, hidden_state):
@@ -175,12 +187,21 @@ class RNNCommunicatingAgent(nn.Module):
         h_fo = hidden_state[..., self.args.hidden_dim:2*self.args.hidden_dim]
         h_pi = hidden_state[..., -self.args.hidden_dim:]
 
-        message, taus, h_fa, h_fo, h_pi = self.itgm.forward(inputs, h_fa, h_fo, h_pi)
-        new_message = self.am.forward(taus.reshape((message.shape[0], -1)), message)
+        prev_message = inputs[..., -self.messages_shape:]
+        observation = inputs[..., :(inputs.shape[-1]-self.messages_shape)//2]
+        prev_observation = inputs[..., observation.shape[-1]:-self.messages_shape]
+        prev_action, h_pi = self.pi(prev_observation, prev_message, h_pi)
 
+        taus, h_fa, h_fo, h_pi_old = self.itgm.forward(
+            prev_message.detach(), prev_observation, prev_action.detach(), h_fa, h_fo, h_pi.detach()
+        )
+        new_message = self.am.forward(taus.reshape((prev_message.shape[0], -1)), prev_message)
+        pi_input_message = th.cat([new_message]*5, -1).reshape(new_message.shape[0], -1)
+
+        action, h_pi = self.pi(observation, pi_input_message, h_pi)
         hidden_state = th.cat([h_fa, h_fo, h_pi], -1)
         try:
-            q = th.cat([new_message, taus[1, ..., -self.args.n_actions:]], -1)
+            q = th.cat([new_message, action], -1)
         except:
             print("Error")
             print(f"Inputs shape: {inputs.shape}\t|\tTaus shape: {taus.shape}\t|\tMessage shape: {message.shape}")
