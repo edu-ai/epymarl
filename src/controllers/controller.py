@@ -14,7 +14,10 @@ class Controller:
         self._build_agents(input_shape)
         self.agent_output_type = args.agent_output_type
 
-        self.action_selector = action_REGISTRY[args.action_selector](args)
+        if 'action_selector' in vars(args):
+            self.action_selector = action_REGISTRY[args.action_selector](args)
+        else:
+            self.action_selector = None
 
         self.hidden_states = None
 

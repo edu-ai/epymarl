@@ -29,10 +29,16 @@ class AttentionMechanism(nn.Module):
         for i in range(received_messages.shape[0]):
             unscaled_alpha = []
             for j in range(self.trajectory_length):
-                unscaled_alpha.append(th.dot(qs[i], k[j*self.n_agents+i, :]) / sqrt_dk)
+                if len(k) > self.trajectory_length:
+                    unscaled_alpha.append(th.dot(qs[i], k[j*self.n_agents+i, :]) / sqrt_dk)
+                else:
+                    unscaled_alpha.append(th.dot(qs[i], k[j+i, :]) / sqrt_dk)
             unscaled_alpha = th.Tensor(unscaled_alpha)
             alpha = th.softmax(unscaled_alpha, -1)
-            message = sum(alpha[j]*v[j*self.n_agents+i, :] for j in range(self.trajectory_length))
+            if len(k) > self.trajectory_length:
+                message = sum(alpha[j]*v[j*self.n_agents+i, :] for j in range(self.trajectory_length))
+            else:
+                message = sum(alpha[j]*v[j+i, :] for j in range(self.trajectory_length))
             messages.append(message)
 
         # shape is (n_agents, message_size)

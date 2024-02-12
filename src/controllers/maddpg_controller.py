@@ -54,21 +54,37 @@ class MADDPGMAC(Controller):
 
     def select_actions(self, ep_batch, t_ep, t_env=0, test_mode=False):
         # Only select actions for the selected batch elements in bs
-        agent_outputs = self.forward(ep_batch, t_ep)
+        if self.allow_communications:
+            agent_outputs, message = self.forward(ep_batch, t_ep)
+        else:
+            agent_outputs = self.forward(ep_batch, t_ep)
         chosen_actions = gumbel_softmax(agent_outputs, hard=True).argmax(dim=-1)
-        return chosen_actions
+        
+        if self.allow_communications:
+            return chosen_actions, message
+        else:
+            return chosen_actions
 
     def target_actions(self, ep_batch, t_ep):
-        agent_outputs = self.forward(ep_batch, t_ep)
+        agent_outputs, messages = self.forward(ep_batch, t_ep)
         return onehot_from_logits(agent_outputs)
 
     def forward(self, ep_batch, t):
         agent_inputs = self._build_inputs(ep_batch, t)
         avail_actions = ep_batch["avail_actions"][:, t]
         agent_outs, self.hidden_states = self.agent(agent_inputs, self.hidden_states)
+        if self.allow_communications:
+            messages = agent_outs[:, :self.scheme['message']['vshape']]
+            agent_outs = agent_outs[:, -self.args.n_actions:]
         agent_outs = agent_outs.view(ep_batch.batch_size, self.n_agents, -1)
         agent_outs[avail_actions==0] = -1e10
-        return agent_outs
+        if self.allow_communications:
+            return agent_outs, messages.view(ep_batch.batch_size, self.n_agents, -1).detach()
+        else:
+            return agent_outs
 
     def init_hidden_one_agent(self, batch_size):
         self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, -1)  # bav
+
+    def init_hidden(self, batch_size):
+        self.hidden_states = self.agent.init_hidden().unsqueeze(0).expand(batch_size, self.n_agents, -1)  # bav
