@@ -129,8 +129,8 @@ class ImaginedTrajectory(nn.Module):
         return q, h
 
     def forward_pi(self, obs, received_message, hidden_state):
-        q, h = self.pi(obs, received_message, hidden_state)
-        return q.detach(), h.detach()
+        q, h = self.pi(obs.detach(), received_message.detach(), hidden_state.detach())
+        return q, h
 
 class Pi(nn.Module):
     def __init__(self, obs_shape, messages_shape, args, n_agents, trajectory_length=10):
@@ -190,13 +190,15 @@ class RNNCommunicatingAgent(nn.Module):
         prev_message = inputs[..., -self.messages_shape:]
         observation = inputs[..., :(inputs.shape[-1]-self.messages_shape)//2]
         prev_observation = inputs[..., observation.shape[-1]:-self.messages_shape]
-        prev_action, h_pi = self.pi(prev_observation, prev_message, h_pi)
+        prev_action, h_pi_new = self.pi(prev_observation.detach(), prev_message.detach(), h_pi.detach())
 
         taus, h_fa, h_fo, h_pi_old = self.itgm.forward(
-            prev_message.detach(), prev_observation, prev_action.detach(), h_fa, h_fo, h_pi.detach()
+            prev_message, prev_observation, prev_action, h_fa, h_fo, h_pi_new
         )
-        new_message = self.am.forward(taus.reshape((prev_message.shape[0], -1)), prev_message)
-        pi_input_message = th.cat([new_message]*5, -1).reshape(new_message.shape[0], -1)
+
+        am_inputs = taus.reshape((prev_message.shape[0], -1))
+        new_message = self.am.forward(am_inputs, prev_message)
+        pi_input_message = th.cat([new_message]*5, 0).reshape(new_message.shape[0], -1)
 
         action, h_pi = self.pi(observation, pi_input_message, h_pi)
         hidden_state = th.cat([h_fa, h_fo, h_pi], -1)
@@ -204,7 +206,7 @@ class RNNCommunicatingAgent(nn.Module):
             q = th.cat([new_message, action], -1)
         except:
             print("Error")
-            print(f"Inputs shape: {inputs.shape}\t|\tTaus shape: {taus.shape}\t|\tMessage shape: {message.shape}")
+            print(f"Inputs shape: {inputs.shape}\t|\tTaus shape: {taus.shape}\t|\tMessage shape: {new_message.shape}")
             print(f"new_message_shape: {new_message.shape}\t|\ttau_shape: {taus[1, ..., -self.args.n_actions:].shape}")
         return q, hidden_state
 

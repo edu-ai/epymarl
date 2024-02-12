@@ -86,6 +86,8 @@ class Controller:
                 inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
             inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
             
+            # We take the message from 2 timesteps ago, the agent will use that to generate the message from the 
+            # previous timestep, and that is what we use to inform the current action. This is to fix backprop issues
             messages = batch['message'][:, max(0, t-2)]
             messages = messages.reshape(bs, -1)
             messages = th.cat([messages]*self.n_agents, dim=0)

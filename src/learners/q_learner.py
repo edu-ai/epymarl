@@ -58,7 +58,10 @@ class QLearner:
         mac_out = []
         self.mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
-            agent_outs, message = self.mac.forward(batch, t=t)
+            if self.args.allow_communications:
+                agent_outs, message = self.mac.forward(batch, t=t)
+            else:
+                agent_outs = self.mac.forward(batch, t=t)
             mac_out.append(agent_outs)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
         # Pick the Q-Values for the actions taken by each agent
@@ -68,7 +71,10 @@ class QLearner:
         target_mac_out = []
         self.target_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
-            target_agent_outs, message = self.target_mac.forward(batch, t=t)
+            if self.args.allow_communications:
+                target_agent_outs, message = self.target_mac.forward(batch, t=t)
+            else:
+                target_agent_outs = self.target_mac.forward(batch, t=t)
             target_mac_out.append(target_agent_outs)
 
         # We don't need the first timesteps Q-Value estimate for calculating targets
@@ -115,7 +121,6 @@ class QLearner:
 
         # Optimise
         self.optimiser.zero_grad()
-        loss.backward(retain_graph=True)
         loss.backward()
         grad_norm = th.nn.utils.clip_grad_norm_(self.params, self.args.grad_norm_clip)
         self.optimiser.step()
