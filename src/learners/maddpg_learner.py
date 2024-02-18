@@ -91,8 +91,12 @@ class MADDPGLearner:
         pis = []
         actions = []
         for t in range(batch.max_seq_length-1):
-            pi, message = self.mac.forward(batch, t=t)
-            pi, message = pi.view(batch_size, 1, self.n_agents, -1), message.view(batch_size, 1, self.n_agents, -1)
+            if self.args.allow_communications:
+                pi, message = self.mac.forward(batch, t=t)
+                pi, message = pi.view(batch_size, 1, self.n_agents, -1), message.view(batch_size, 1, self.n_agents, -1)
+            else:
+                pi  = self.mac.forward(batch, t=t)
+                pi = pi.view(batch_size, 1, self.n_agents, -1)
             actions.append(gumbel_softmax(pi, hard=True))
             pis.append(pi)
         actions = th.cat(actions, dim=1)
