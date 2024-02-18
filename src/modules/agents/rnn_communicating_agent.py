@@ -168,18 +168,18 @@ class Pi(nn.Module):
         return q, h
 
 class RNNCommunicatingAgent(nn.Module):
-    def __init__(self, input_shape, messages_shape, args, n_agents, trajectory_length=3):
+    def __init__(self, input_shape, messages_shape, args, n_agents):
         super(RNNCommunicatingAgent, self).__init__()
         self.args = args
         self.n_agents = n_agents
-        self.trajectory_length = trajectory_length
+        self.trajectory_length = args.trajectory_length
 
         self.obs_shape = (input_shape - args.n_actions) // 2
         self.messages_shape = messages_shape
 
         self.pi = Pi(self.obs_shape, messages_shape, args, n_agents)
-        self.itgm = ImaginedTrajectory(self.obs_shape, messages_shape, args, n_agents, self.pi, trajectory_length)
-        self.am = AttentionMechanism(self.obs_shape, messages_shape, args, n_agents, trajectory_length)
+        self.itgm = ImaginedTrajectory(self.obs_shape, messages_shape, args, n_agents, self.pi, args.trajectory_length)
+        self.am = AttentionMechanism(self.obs_shape, messages_shape, args, n_agents, args.trajectory_length)
 
     def init_hidden(self):
         # make hidden states on same device as model
