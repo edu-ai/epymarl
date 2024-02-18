@@ -5,7 +5,7 @@ import math
 
 
 class AttentionMechanism(nn.Module):
-    def __init__(self, obs_shape, messages_shape, args, n_agents, trajectory_length=10):
+    def __init__(self, obs_shape, messages_shape, args, n_agents, trajectory_length=3):
         super(AttentionMechanism, self).__init__()
         self.tau_shape = obs_shape + args.n_actions
         self.messages_shape = messages_shape
@@ -47,7 +47,7 @@ class AttentionMechanism(nn.Module):
         return messages
 
 class ImaginedTrajectory(nn.Module):
-    def __init__(self, obs_shape, messages_shape, args, n_agents, pi, trajectory_length=10):
+    def __init__(self, obs_shape, messages_shape, args, n_agents, pi, trajectory_length=3):
         super(ImaginedTrajectory, self).__init__()
         self.args = args
         self.obs_shape = obs_shape
@@ -168,13 +168,13 @@ class Pi(nn.Module):
         return q, h
 
 class RNNCommunicatingAgent(nn.Module):
-    def __init__(self, input_shape, messages_shape, args, n_agents, trajectory_length=10):
+    def __init__(self, input_shape, messages_shape, args, n_agents, trajectory_length=3):
         super(RNNCommunicatingAgent, self).__init__()
         self.args = args
         self.n_agents = n_agents
         self.trajectory_length = trajectory_length
 
-        self.obs_shape = input_shape // 2
+        self.obs_shape = (input_shape - args.n_actions) // 2
         self.messages_shape = messages_shape
 
         self.pi = Pi(self.obs_shape, messages_shape, args, n_agents)
@@ -193,13 +193,13 @@ class RNNCommunicatingAgent(nn.Module):
         h_fo = hidden_state[..., self.args.hidden_dim:2*self.args.hidden_dim]
         h_pi = hidden_state[..., -self.args.hidden_dim:]
 
+        observation = inputs[..., :self.obs_shape]
+        prev_observation = inputs[..., self.obs_shape:self.obs_shape*2]
+        prev_action = inputs[..., self.obs_shape*2:self.obs_shape*2+self.args.n_actions].detach()
         prev_message = inputs[..., -self.messages_shape:]
-        observation = inputs[..., :(inputs.shape[-1]-self.messages_shape)//2]
-        prev_observation = inputs[..., observation.shape[-1]:-self.messages_shape]
-        prev_action, h_pi_new = self.pi(prev_observation.detach(), prev_message.detach(), h_pi.detach())
 
         taus, h_fa, h_fo, h_pi_old = self.itgm.forward(
-            prev_message, prev_observation, prev_action, h_fa, h_fo, h_pi_new
+            prev_message, prev_observation, prev_action, h_fa, h_fo, h_pi
         )
 
         am_inputs = taus.reshape((prev_message.shape[0], -1))

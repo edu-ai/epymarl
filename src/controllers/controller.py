@@ -58,8 +58,7 @@ class Controller:
         if self.allow_communications:
             # These are duplicated here to provide the t-1 input to generate messages used for current input
             input_shape += scheme["obs"]["vshape"]
-            if self.args.obs_last_action:
-                input_shape += scheme["actions_onehot"]["vshape"][0]
+            input_shape += scheme["actions_onehot"]["vshape"][0]
             if self.args.obs_agent_id:
                 input_shape += self.n_agents
             
@@ -82,11 +81,15 @@ class Controller:
             inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
 
         if self.allow_communications:
+            # This chunk builds previous observation
             inputs.append(batch["obs"][:, max(0, t-1)])
             if self.args.obs_last_action:
                 inputs.append(th.zeros_like(batch["actions_onehot"][:, max(0, t-2)]))
             if self.args.obs_agent_id:
                 inputs.append(th.eye(self.n_agents, device=batch.device).unsqueeze(0).expand(bs, -1, -1))
+            
+            inputs.append(th.zeros_like(batch["actions_onehot"][:, max(0, t-1)]))
+            
             inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
             
             # We take the message from 2 timesteps ago, the agent will use that to generate the message from the 
