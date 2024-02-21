@@ -73,12 +73,8 @@ class ImaginedTrajectory(nn.Module):
     def forward(self, message, obs, action, h_fa, h_fo, h_pi):
         observations = [obs]
         actions = [action]
-        hs = [h_fa, h_fo, h_pi]
         for i in range(self.trajectory_length-1):
             obs, action, h_fa, h_fo, h_pi = self.forward_helper(obs, action, message, h_fa, h_fo, h_pi)
-            hs.append(h_fa)
-            hs.append(h_fo)
-            hs.append(h_pi)
             observations.append(obs)
             actions.append(action)
         taus = []
