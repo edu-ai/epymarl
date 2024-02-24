@@ -1,15 +1,19 @@
 #!/bin/bash
 
 #SBATCH --job-name=epymarl
-#SBATCH --partition=long                        
-#SBATCH --cpus-per-task=2
-#SBATCH --gres=gpu:a100:1
-#SBATCH --mem=65G                                     
-#SBATCH --time=24:00:00
+#SBATCH --partition=long
+#SBATCH --cpus-per-task=6
+#SBATCH --gpus=1
+#SBATCH --mem=65G
+#SBATCH --time=120:00:00
 
 config=$1
-env_name=${2:-"pressureplate:pressureplate-linear-4p-v0"}
-env_time=${3:-25}
-env_config=${4:-gymma}
+message_shape=${2:-32}
+trajectory_length=${3:-3}
+env_name=${4:-MMM}
+env_config=${5:-sc2}
 
-python3 src/main.py --config=$config --env-config=$env_config with env_args.time_limit=$env_time env_args.key=$env_name
+cd /home/y/yzhilong/epymarl
+source ../python_envs/epymarl38/bin/activate
+echo "message_shape: "$message_shape
+python3 src/main.py --config=$config --env-config=$env_config with env_args.map_name=$env_name message_shape=$message_shape trajectory_length=$trajectory_length
