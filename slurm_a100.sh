@@ -3,7 +3,7 @@
 #SBATCH --job-name=epymarl
 #SBATCH --partition=long                        
 #SBATCH --cpus-per-task=6
-#SBATCH --gres=gpu:a100:1
+#SBATCH --gres=gpu:a100mig:1
 #SBATCH --mem=65G                                     
 #SBATCH --time=120:00:00
 
