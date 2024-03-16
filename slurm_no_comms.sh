@@ -14,4 +14,4 @@ env_config=${3:-sc2}
 cd /home/y/yzhilong/epymarl
 source ../python_envs/epymarl38/bin/activate
 echo "message_shape: "$message_shape
-python3 src/main.py --config=$config --env-config=$env_config with env_args.map_name=$env_name allow_communications=false
+python3 src/main.py --config=$config --env-config=$env_config with env_args.map_name=$env_name allow_communications=false seed=1

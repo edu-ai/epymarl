@@ -16,4 +16,4 @@ env_config=${5:-sc2}
 cd /home/y/yzhilong/epymarl
 source ../python_envs/epymarl38/bin/activate
 echo "message_shape: "$message_shape
-python3 src/main.py --config=$config --env-config=$env_config with env_args.map_name=$env_name message_shape=$message_shape trajectory_length=$trajectory_length
+python3 src/main.py --config=$config --env-config=$env_config with env_args.map_name=$env_name message_shape=$message_shape trajectory_length=$trajectory_length seed=1
