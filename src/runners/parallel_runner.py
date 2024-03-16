@@ -226,7 +226,32 @@ def env_worker(remote, env_fn):
         if cmd == "step":
             actions = data
             # Take a step in the environment
-            reward, terminated, env_info = env.step(actions)
+            try:
+                reward, terminated, env_info = env.step(actions)
+            except AssertionError:
+                # random sample of avail actions
+                avail_actions = np.array(env.get_avail_actions())
+                avail_actions *= np.array([i for i in range(avail_actions.shape[0])])
+                try_count = 0
+                term = False
+                while not term:
+                    if try_count > 10000:
+                        raise AssertionError("Too many failures of random action sampling")
+                    actions = []
+                    for i in range(avail_actions.shape[0]):
+                        lst = list(set(avail_actions[i]))
+                        actions.append(np.random.choice(lst))
+                    actions = np.array(actions)
+                    try_count += 1
+                    if try_count % 100 == 0:
+                        print(f"Invalid action, resampled actions {try_count} times")
+                    try:
+                        reward, terminated, env_info = env.step(actions)
+                    except:
+                        pass
+                    term = True
+                print("RANDOM ACTION RESAMPLING")
+                
             # Return the observations, avail_actions and state to make the next action
             state = env.get_state()
             avail_actions = env.get_avail_actions()
