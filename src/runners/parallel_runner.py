@@ -231,7 +231,7 @@ def env_worker(remote, env_fn):
             except AssertionError:
                 # random sample of avail actions
                 avail_actions = np.array(env.get_avail_actions())
-                avail_actions *= np.array([i for i in range(avail_actions.shape[0])])
+                avail_actions *= np.array([i for i in range(avail_actions.shape[1])])
                 try_count = 0
                 term = False
                 while not term:
