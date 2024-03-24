@@ -102,6 +102,8 @@ class Controller:
             inputs = inputs.reshape(bs, self.n_agents, -1)
             inputs = th.cat([inputs, messages], dim=-1)
             inputs = inputs.reshape(bs*self.n_agents, -1)
+        else:
+            inputs = th.cat([x.reshape(bs*self.n_agents, -1) for x in inputs], dim=1)
         return inputs
 
 
