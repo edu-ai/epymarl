@@ -49,6 +49,8 @@ if __name__ == "__main__":
                 tb_log_name = line.replace(':', '_')
                 break
         for sname in slurm_relevant_fnames:
+            if tb_log_name is None:
+                break
             with open(sname, 'r') as s:
                 data = s.read()
                 if tb_log_name_original in data:
