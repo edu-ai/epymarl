@@ -238,8 +238,8 @@ def env_worker(remote, env_fn):
                     if try_count > 10000:
                         raise AssertionError("Too many failures of random action sampling")
                     actions = []
-                    for i in range(avail_actions.shape[0]):
-                        lst = list(set(avail_actions[i]))
+                    for i in range(data.size):
+                        lst = list(set(avail_actions[i % avail_actions.shape[0]]))
                         actions.append(np.random.choice(lst))
                     actions = np.array(actions)
                     try_count += 1
