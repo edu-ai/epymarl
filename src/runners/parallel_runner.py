@@ -149,7 +149,7 @@ class ParallelRunner:
                     post_transition_data["reward"].append((data["reward"],))
                     if self.args.allow_communications:
                         message_to_add.append(message[msg_counter])
-                    msg_counter += 1
+                        msg_counter += 1
                     episode_returns[idx] += data["reward"]
                     episode_lengths[idx] += 1
                     if not test_mode:
