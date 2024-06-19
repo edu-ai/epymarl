@@ -45,7 +45,10 @@ class QLearner:
         mac_hidden_states = []
         self.mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
-            agent_outs = self.mac.forward(batch, t=t)
+            if self.args.allow_communications:
+                agent_outs, message = self.mac.forward(batch, t=t)
+            else:
+                agent_outs = self.mac.forward(batch, t=t)
             mac_out.append(agent_outs)
             mac_hidden_states.append(self.mac.hidden_states)
         mac_out = th.stack(mac_out, dim=1)  # Concat over time
@@ -60,7 +63,10 @@ class QLearner:
         target_mac_hidden_states = []
         self.target_mac.init_hidden(batch.batch_size)
         for t in range(batch.max_seq_length):
-            target_agent_outs = self.target_mac.forward(batch, t=t)
+            if self.args.allow_communications:
+                target_agent_outs, message = self.mac.forward(batch, t=t)
+            else:
+                target_agent_outs = self.mac.forward(batch, t=t)
             target_mac_out.append(target_agent_outs)
             target_mac_hidden_states.append(self.target_mac.hidden_states)
 

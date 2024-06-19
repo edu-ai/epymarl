@@ -101,9 +101,11 @@ class ParallelRunner:
 
             # Pass the entire batch of experiences up till now to the agents
             # Receive the actions for each agent at this timestep in a batch for each un-terminated env
-            actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, bs=envs_not_terminated, test_mode=test_mode)
+            if self.args.allow_communications:
+                actions, message = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, bs=envs_not_terminated, test_mode=test_mode)
+            else:
+                actions = self.mac.select_actions(self.batch, t_ep=self.t, t_env=self.t_env, bs=envs_not_terminated, test_mode=test_mode)
             cpu_actions = actions.to("cpu").numpy()
-
             # Update the actions taken
             actions_chosen = {
                 "actions": actions.unsqueeze(1)
@@ -137,14 +139,17 @@ class ParallelRunner:
                 "avail_actions": [],
                 "obs": []
             }
-
             # Receive data back for each unterminated env
+            if self.args.allow_communications:
+                message_to_add, msg_shape, msg_counter = [], message.shape[1:], 0
             for idx, parent_conn in enumerate(self.parent_conns):
                 if not terminated[idx]:
                     data = parent_conn.recv()
                     # Remaining data for this current timestep
                     post_transition_data["reward"].append((data["reward"],))
-
+                    if self.args.allow_communications:
+                        message_to_add.append(message[msg_counter])
+                        msg_counter += 1
                     episode_returns[idx] += data["reward"]
                     episode_lengths[idx] += 1
                     if not test_mode:
@@ -162,7 +167,10 @@ class ParallelRunner:
                     pre_transition_data["state"].append(data["state"])
                     pre_transition_data["avail_actions"].append(data["avail_actions"])
                     pre_transition_data["obs"].append(data["obs"])
-
+                elif terminated[idx] and idx in envs_not_terminated and self.args.allow_communications:
+                    message_to_add.append(th.zeros(msg_shape, device=actions.get_device()))
+            if self.args.allow_communications:
+                post_transition_data['message'] = th.stack(message_to_add)
             # Add post_transiton data into the batch
             self.batch.update(post_transition_data, bs=envs_not_terminated, ts=self.t, mark_filled=False)
 
@@ -224,7 +232,32 @@ def env_worker(remote, env_fn):
         if cmd == "step":
             actions = data
             # Take a step in the environment
-            reward, terminated, env_info = env.step(actions)
+            try:
+                reward, terminated, env_info = env.step(actions)
+            except AssertionError:
+                # random sample of avail actions
+                avail_actions = np.array(env.get_avail_actions())
+                avail_actions *= np.array([i for i in range(avail_actions.shape[1])])
+                try_count = 0
+                term = False
+                while not term:
+                    if try_count > 10000:
+                        raise AssertionError("Too many failures of random action sampling")
+                    actions = []
+                    for i in range(data.size):
+                        lst = list(set(avail_actions[i % avail_actions.shape[0]]))
+                        actions.append(np.random.choice(lst))
+                    actions = np.array(actions)
+                    try_count += 1
+                    if try_count % 100 == 0:
+                        print(f"Invalid action, resampled actions {try_count} times")
+                    try:
+                        reward, terminated, env_info = env.step(actions)
+                    except:
+                        pass
+                    term = True
+                print("RANDOM ACTION RESAMPLING")
+                
             # Return the observations, avail_actions and state to make the next action
             state = env.get_state()
             avail_actions = env.get_avail_actions()
